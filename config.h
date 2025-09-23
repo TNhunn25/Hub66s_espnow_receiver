@@ -6,6 +6,7 @@
 #include <time.h>
 #include <MD5Builder.h>
 #include "led_status.h"
+#include <Preferences.h> //Thư viện lưu trữ dữ liệu không mất khi tắt nguồn
 
 // Định nghĩa chân LED
 #define LED_PIN 46
@@ -29,7 +30,7 @@ static uint8_t receiverMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // MAC broa
 #define private_key "khoabi_mat_123"
 
 // Hàm mã hóa Auth MD5
-String md5Hash(int id_src, int id_des, const String &mac_src, const String &mac_des, uint8_t opcode, const String &data,
+String md5Hash(int id_src, int id_des, String mac_src, String mac_des, uint8_t opcode, const String &data,
                unsigned long timestamp)
 {
 
@@ -65,7 +66,7 @@ typedef struct
 
 typedef struct
 {
-    char payload[250];
+    char payload[512]; // Kích thước payload có thể điều chỉnh
 } PayloadStruct;
 
 // Lấy địa chỉ MAC của thiết bị

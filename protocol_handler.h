@@ -59,14 +59,16 @@ String createMessage(int id_src, int id_des, String mac_src, String mac_des, uin
 }
 
 // Gửi phản hồi
-void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_t opcode, DynamicJsonDocument data, const uint8_t *targetMac)
+void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_t opcode, const DynamicJsonDocument &data, const uint8_t *targetMac)
 {
     String targetMacStr = macToString(targetMac);                                       // Chuyển đổi targetMac thành chuỗi
     String output = createMessage(id_src, id_des, mac_src, targetMacStr, opcode, data); // Sử dụng targetMacStr làm mac_des
     if (output.length() > sizeof(message.payload))
     {
-        Serial.println("❌ Payload quá lớn!");
+        // Serial.println("❌ Payload quá lớn!");
+        Serial.printf("❌ Payload quá lớn (%u > %u), không gửi được\n", output.length(), sizeof(message.payload));
         led.setState(CONNECTION_ERROR);
+        dang_gui = false;
         return;
     }
     output.toCharArray(message.payload, sizeof(message.payload)); // Chuyển vào payload
@@ -103,30 +105,33 @@ void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_
 
 // Lưu dữ liệu license vào NVS (Non-Volatile Storage)
 // NVS: đảm bảo dữ liệu không bị mất khi thiết bị tắt nguồn.
-void saveLicenseData()
+void saveLicenseData(bool verbose = true)
 {
-    preferences.begin("license", false); // Mở namespace "license" ở chế độ read/write
+    preferences.begin("license", false);
     preferences.putInt("lid", globalLicense.lid);
     preferences.putULong("created", globalLicense.created);
     preferences.putInt("duration", globalLicense.duration);
     preferences.putInt("remain", globalLicense.remain);
     preferences.putBool("expired_flag", globalLicense.expired_flag);
     preferences.putULong("runtime", runtime);
-    preferences.putUInt("nod", globalLicense.nod);      // Bổ sung: Lưu NOD
-    preferences.putULong("last_save", millis() / 1000); // Lưu thời điểm lưu cuối cùng
+    preferences.putUInt("nod", globalLicense.nod);
+    preferences.putULong("last_save", millis() / 1000);
     preferences.end();
-    Serial.println("✅ Đã lưu dữ liệu license vào NVS");
-
-    Serial.print("Expired: ");
-    Serial.println(globalLicense.expired_flag ? 1 : 0);
-    Serial.print("Remain: ");
-    Serial.println(globalLicense.remain);
+    if (verbose)
+    {
+        Serial.println("✅ Đã lưu dữ liệu license vào NVS");
+        Serial.print("Expired: ");
+        Serial.println(globalLicense.expired_flag ? 1 : 0);
+        Serial.print("Remain: ");
+        Serial.println(globalLicense.remain);
+    }
 }
 
 // Lưu cấu hình thiết bị
 void saveDeviceConfig()
 {
     preferences.begin("license", false);
+    // Lưu cấu hình thiết bị với kiểu dữ liệu nhất quán
     preferences.putUInt("config_lid", config_lid);
     preferences.putUInt("config_id", config_id);
     preferences.putUInt("nod", ::nod);
@@ -144,7 +149,6 @@ void loadLicenseData()
     globalLicense.duration = preferences.getInt("duration", 0);
     globalLicense.remain = preferences.getInt("remain", 0);
     globalLicense.expired_flag = preferences.getBool("expired_flag", false);
-    unsigned long last_save = preferences.getULong("last_save", 0);
     runtime = preferences.getULong("runtime", 0);
     globalLicense.nod = preferences.getUInt("nod", 10); // Bổ sung: Đọc NOD, mặc định 10
     ::nod = globalLicense.nod;
@@ -161,19 +165,31 @@ void loadLicenseData()
 }
 void onReceive(const esp_now_recv_info *recv_info, const uint8_t *incomingData, int len)
 {
+    // // Copy nguyên struct
+    // lastRecvInfo = *recv_info;
+    // // Copy payload (giới hạn kích thước)
+    // lastPacketLen = min(len, (int)sizeof(lastPacketData));
+    // memcpy(lastPacketData, incomingData, lastPacketLen);
+    // // Đánh dấu có gói mới
+    // hasNewPacket = true;
 
     // Copy nguyên struct
     lastRecvInfo = *recv_info;
+    // Sao lưu MAC nguồn vì con trỏ trong recv_info có thể không còn hợp lệ
+    memcpy(lastPacketMac, recv_info->src_addr, sizeof(lastPacketMac));
     // Copy payload (giới hạn kích thước)
     lastPacketLen = min(len, (int)sizeof(lastPacketData));
     memcpy(lastPacketData, incomingData, lastPacketLen);
     // Đánh dấu có gói mới
     hasNewPacket = true;
 }
+
 // Xử lý dữ liệu nhận được
 void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData, int len)
 {
-    const uint8_t *mac_addr = recv_info->src_addr;
+    const uint8_t *mac_addr = lastPacketMac;
+    (void)recv_info; // đã sao lưu MAC nên tránh cảnh báo biến không dùng
+    // const uint8_t *mac_addr = recv_info->src_addr;
     String myMac = WiFi.macAddress();
     time_t now = time(nullptr);
     Serial.println("\n📩 Nhận package tin:");
@@ -204,7 +220,8 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     String receivedAuth = doc["auth"].as<String>();
 
     // Bỏ qua gói không dành cho thiết bị
-    if (id_des != config_id && id_des != 0 && mac_des != myMac && mac_des != "FF:FF:FF:FF:FF:FF")
+    // if (id_des != config_id && id_des != 0 && mac_des != myMac && mac_des != "FF:FF:FF:FF:FF:FF")
+    if (id_des != config_id && id_des != 0)
     {
         Serial.println("❌ Gói tin không dành cho thiết bị này!");
         return;
@@ -300,9 +317,8 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
                 {
                     delay(10); // Chờ LED hoàn thành chớp
                 }
-                // chờ ngắt rồi reset
-                //  delay(200);
-                ESP.restart(); // Khởi động lại thiết bị sau khi cập nhật giấy phép
+                saveLicenseData();
+                delay(100);
             }
             else
             {
@@ -328,8 +344,8 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     case LIC_GET_LICENSE:
     {
         JsonObject data = doc["data"].as<JsonObject>();
-        int lid = data["lid"].as<int>();
-        DynamicJsonDocument respDoc(256);
+        uint32_t lid = data["lid"].as<uint32_t>(); // Changed from String to int
+        DynamicJsonDocument respDoc(512);
 
         // Kiểm tra LID có hợp lệ không
         if (lid == config_lid || lid == 0)
