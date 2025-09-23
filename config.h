@@ -19,6 +19,7 @@
 #define LIC_LICENSE_DELETE_ALL 0x05
 #define LIC_INFO 0x06
 #define CONFIG_DEVICE 0x07
+#define LIC_CONFIG_DEVICE CONFIG_DEVICE
 #define LIC_INFO_RESPONSE 0x80
 
 // Kích thước buffer cho JSON

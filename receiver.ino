@@ -21,7 +21,7 @@ PayloadStruct message;
 
 // Biến lưu cấu hình
 int config_lid = 115;
-int config_id = 2007; // ID của HUB66S
+int config_id = 2011; // ID của HUB66S
 int id_des = 1001;    // ID của LIC66S
 String device_id = "HUB66S_001";
 
@@ -40,7 +40,6 @@ uint32_t lastRuntimeUpdate = 0; // Thời điểm cập nhật runtime gần nh�
 // bool networkConnected = false;
 uint32_t runtime = 0;
 uint32_t nod = 0; // số lượng thiết bị giả định 10
-
 bool dang_gui = false; // cờ đang gửi
 uint32_t lastTime = 0; // thời điểm gửi lần cuối
 uint8_t retries = 0;   // số lần đã thử gửi
@@ -98,6 +97,7 @@ void setup()
   loadLicenseData();
   // Biến trả về giá trị của node
   globalLicense.lid = config_lid;
+  globalLicense.id = config_id;
   globalLicense.nod = nod;
 
   // Khởi tạo trạng thái expired dựa trên globalLicense

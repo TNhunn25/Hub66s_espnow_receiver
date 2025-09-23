@@ -109,6 +109,7 @@ void saveLicenseData(bool verbose = true)
 {
     preferences.begin("license", false);
     preferences.putInt("lid", globalLicense.lid);
+    preferences.putInt("id", globalLicense.id);
     preferences.putULong("created", globalLicense.created);
     preferences.putInt("duration", globalLicense.duration);
     preferences.putInt("remain", globalLicense.remain);
@@ -143,6 +144,7 @@ void loadLicenseData()
 {
     preferences.begin("license", true); // Mở namespace "license" ở chế độ read-only
     globalLicense.lid = preferences.getInt("lid", 0);
+    globalLicense.id = preferences.getInt("id", config_id);
     config_lid = preferences.getInt("config_lid", config_lid);
     config_id = preferences.getInt("config_id", config_id);
     globalLicense.created = preferences.getULong("created", 0);
@@ -221,7 +223,17 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
 
     // Bỏ qua gói không dành cho thiết bị
     // if (id_des != config_id && id_des != 0 && mac_des != myMac && mac_des != "FF:FF:FF:FF:FF:FF")
-    if (id_des != config_id && id_des != 0)
+    // if (id_des != config_id && id_des != 0)
+    // {
+    //     Serial.println("❌ Gói tin không dành cho thiết bị này!");
+    //     return;
+    // }
+    
+
+    // Bỏ qua gói không dành cho thiết bị trừ khi đây là gói cấu hình
+    const bool targetsDevice = (id_des == config_id || id_des == 0);
+    const bool isConfigRequest = (opcode == CONFIG_DEVICE);
+    if (!targetsDevice && !isConfigRequest)
     {
         Serial.println("❌ Gói tin không dành cho thiết bị này!");
         return;
@@ -390,12 +402,35 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     case CONFIG_DEVICE:
     {
         JsonObject data = doc["data"].as<JsonObject>();
-        int lid = data["new_lid"].as<int>();
-        uint32_t nod = data["nod"].as<uint32_t>();
-        int id = data["new_id"].as<int>(); // Mặc định lấy config_id
+
+        int lid = 0;
+        if (data.containsKey("new_lid"))
+        {
+            lid = data["new_lid"].as<int>();
+        }
+        else if (data.containsKey("lid"))
+        {
+            lid = data["lid"].as<int>();
+        }
+
+        int id = 0;
+        if (data.containsKey("new_id"))
+        {
+            id = data["new_id"].as<int>();
+        }
+        else if (data.containsKey("id"))
+        {
+            id = data["id"].as<int>();
+        }
+
+        uint32_t requestedNod = ::nod;
+        if (data.containsKey("nod"))
+        {
+            requestedNod = data["nod"].as<uint32_t>();
+        }
 
         DynamicJsonDocument respDoc(256);
-        bool isValid = false;
+        bool isValid = true;
         String error_msg; // thông báo lỗi
 
         // Kiểm tra LID và ID và số lượng thiết bị (NOD)
@@ -409,42 +444,33 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             isValid = false;
             error_msg = "ID không hợp lệ";
         }
-        else if (id != config_id)
-        {
-            isValid = false;
-            error_msg = "ID không khớp với thiết bị này";
-        }
-        else
-        {
-            isValid = true;
-        }
+
         if (isValid)
         {
-            // Cập nhật cấu hình
-            globalLicense.lid = lid;
-            globalLicense.id = id;
-            globalLicense.nod = nod;
-
-            preferences.begin("license", false);
-            preferences.putUInt("lid", globalLicense.lid);
-            preferences.putUInt("id", globalLicense.id);
-            preferences.putUInt("nod", globalLicense.nod);
-            preferences.end();
+            // Cập nhật cấu hình thiết bị
+            config_lid = lid;
+            config_id = id;
+            ::nod = requestedNod;
+            globalLicense.nod = requestedNod;
+            saveDeviceConfig();
+            //lưu vào NVS
+            saveLicenseData(false); // lưu trạng thái license hiện tại nhưng không in log
 
             // chớp LED để xác nhận
             led.setState(FLASH_TWICE); // chớp 3 lần
-            Serial.println("✅ Cấu hình thành công: LID = " + String(lid) + ", ID = " + String(id) + ", NOD = " + String(nod));
+            Serial.println("✅ Cấu hình thành công: LID = " + String(lid) + ", ID = " + String(id) + ", NOD = " + String(requestedNod));
 
             respDoc["status"] = 0;
-            respDoc["lid"] = globalLicense.lid;
-            respDoc["id"] = globalLicense.id;
-            respDoc["nod"] = globalLicense.nod;
+            respDoc["lid"] = config_lid;
+            respDoc["id"] = config_id;
+            respDoc["nod"] = ::nod;
         }
         else
         {
             respDoc["status"] = 1;
             respDoc["error_msg"] = error_msg;
             Serial.println("❌ Lỗi: " + error_msg + " (LID = " + String(lid) + ", ID = " + String(id) + ", config_id = " + String(config_id) + ")");
+            led.setState(CONNECTION_ERROR);
         }
 
         sendResponse(config_id, id_src, myMac, mac_src, CONFIG_DEVICE | 0x80, respDoc, mac_addr);
