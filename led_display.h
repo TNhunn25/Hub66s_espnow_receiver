@@ -41,7 +41,7 @@ namespace Hub66s
          */
         void update()
         {
-            if (!globalLicense.expired_flag)
+            if (!globalLicense.expired_flag && globalLicense.remain >0)
             {
                 for (uint8_t i = 1; i < 13; ++i)
                 {

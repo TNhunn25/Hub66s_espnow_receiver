@@ -6,9 +6,19 @@
 #include <time.h>
 #include <MD5Builder.h>
 #include "led_status.h"
+#include <Preferences.h> //Thư viện lưu trữ dữ liệu không mất khi tắt nguồn
 
 // Định nghĩa chân LED
 #define LED_PIN 46
+
+//Cấu hình nhóm ESP- NOW
+constexpr uint8_t HUB66S_GROUP_COUNT = 3; //Tổng số nhóm Hub sẽ luân phiên
+constexpr uint8_t HUB66S_GROUP_SIZE = 1; //Số lượng Hub tối đa trong mỗi nhóm
+constexpr uint8_t HUB66S_GROUP_SLOT_MS = 5000UL; //5 giây cho mỗi slot hoạt động
+
+//Khóa PMK dùng cho mã hóa ESP_NOW 16 byte
+static const uint8_t HUB66S_ESPNOW_PMK[16] = {'H', 'u', 'b', '6', '6', 's', 'P', 'm', 'k', 'S', 'e', 'c', 'r', 'e', 't', '!'}; // Khóa PMK dùng chung cho toàn mạng
+static const uint8_t HUB66S_ESPNOW_LMK[16] = {'H', 'u', 'b', '6', '6', 's', 'L', 'm', 'k', 'S', 'e', 'c', 'r', 'e', 't', '!'}; // Khóa LMK dùng khi đăng ký peer
 
 // Định nghĩa các opcode
 #define LIC_TIME_GET 0x01
@@ -18,6 +28,7 @@
 #define LIC_LICENSE_DELETE_ALL 0x05
 #define LIC_INFO 0x06
 #define CONFIG_DEVICE 0x07
+#define LIC_CONFIG_DEVICE CONFIG_DEVICE
 #define LIC_INFO_RESPONSE 0x80
 
 // Kích thước buffer cho JSON
@@ -26,10 +37,12 @@
 // Địa chỉ MAC broadcast và khóa bí mật
 static uint8_t senderMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   // MAC của LIC66S
 static uint8_t receiverMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // MAC broadcast
+
+//Khóa bí mật cho hàm băm MD5
 #define private_key "khoabi_mat_123"
 
 // Hàm mã hóa Auth MD5
-String md5Hash(int id_src, int id_des, const String &mac_src, const String &mac_des, uint8_t opcode, const String &data,
+String md5Hash(int id_src, int id_des, String mac_src, String mac_des, uint8_t opcode, const String &data,
                unsigned long timestamp)
 {
 
@@ -65,7 +78,7 @@ typedef struct
 
 typedef struct
 {
-    char payload[250];
+    char payload[512]; // Kích thước payload có thể điều chỉnh
 } PayloadStruct;
 
 // Lấy địa chỉ MAC của thiết bị
