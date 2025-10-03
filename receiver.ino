@@ -20,8 +20,8 @@ LicenseInfo globalLicense;
 PayloadStruct message;
 
 // Biến lưu cấu hình
-int config_lid = 115;
-int config_id = 2011; // ID của HUB66S
+int config_lid = 112;
+int config_id = 2012; // ID của HUB66S
 int id_des = 1001;    // ID của LIC66S
 String device_id = "HUB66S_001";
 
@@ -30,6 +30,14 @@ char jsonBuffer[BUFFER_SIZE];
 int bufferIndex = 0;
 bool expired_flag = false; // Cờ hết hạn
 uint8_t expired = 0;       // Biến lưu trạng thái hết hạn
+
+//-----------
+constexpr uint8_t MAX_RETRIES = 3; // Số lần thử gửi lại tối đa
+bool waitingSendResult = false; // Cờ chờ kết quả gửi
+bool needRetry = false; //Cần gửi lại
+//-----------
+
+
 uint32_t now;
 time_t start_time = 0;          // thời điểm bắt đầu tính thời gian
 const uint32_t duration = 60;   // Giá trị cố định sau khi gán lần đầu cho license
@@ -52,6 +60,8 @@ uint8_t lastPacketMac[6];
 volatile bool hasNewPacket = false; // Lưu độ dài payload
 int lastPacketLen;
 // Lưu payload (có thể điều chỉnh kích thước tuỳ theo nhu cầu, ở đây bằng tối đa của PayloadStruct)
+
+/*
 
 void xu_ly_dang_gui()
 {
@@ -78,6 +88,56 @@ void xu_ly_dang_gui()
     retries = 0;
   }
 }
+*/
+void xu_ly_dang_gui()
+{
+  // Chỉ xử lý khi đang trong trạng thái gửi
+  if(!dang_gui)
+    return;
+
+   //Nếu đang chờ kết quả gửi thì chưa làm gì cả
+   if(waitingSendResult)
+     return;
+
+  //Nếu không cần gửi lại thì kết thúc trạng thái gửi
+  if(!needRetry)
+  {
+    dang_gui = false;
+    return;
+  }
+
+  if(retries >= MAX_RETRIES)
+  {
+    // Đã thử 3 lần mà vẫn fail → dừng gửi
+    dang_gui = false;
+    needRetry = false;
+    waitingSendResult = false;
+    retries = 0;
+    Serial.println("❌ Gửi thất bại sau khi gửi nhiều lần.");
+    return;
+  }
+
+  uint32_t now = millis(); //hoặc dùng giá trị unsigned long
+  //Chưa đủ 1s kể từ lần gửi trước thì bỏ qua
+   if(now - lastTime < 1000)
+   return;
+
+  // Đã đủ 1s, cập nhật thời điểm và thử gửi
+  lastTime = now;
+  retries++;
+  needRetry = false; //chỉ gửi lại một lần
+  waitingSendResult = true; //chờ kết quả gửi
+  Serial.printf("📤 Thử gửi lại lần %d...\n", retries);
+  // gọi hàm truyền data
+  xu_ly_data(&lastRecvInfo, lastPacketData, lastPacketLen);
+  if(!waitingSendResult && !needRetry)
+  {
+    // Không có gói nào được gửi trong lần này
+    dang_gui = false;
+  }
+}
+
+
 void setup()
 {
   Serial.begin(115200);
@@ -88,7 +148,7 @@ void setup()
 
   WiFi.mode(WIFI_STA); // Enable Wi-Fi in Station mode for ESP-NOW
   delay(100);
-  // WiFi.setTxPower(WIFI_POWER_2dBm);
+  WiFi.setTxPower(WIFI_POWER_2dBm);
   initEspNow();                     // Initialize ESP-NOW
   configTime(0, 0, "pool.ntp.org"); // Configure NTP for time synchronization
 
@@ -173,6 +233,7 @@ void loop()
       led.setState(NORMAL_STATUS); // LED sáng liên tục
     }
   }
+  /*
   if (hasNewPacket)
   {
     // Gọi hàm xử lý với đúng kiểu
@@ -182,6 +243,21 @@ void loop()
     dang_gui = true;
     retries = 0;
   }
+  */
+
+  if (hasNewPacket)
+  {
+    //Reset trạng thái trước khi xử lý gói mới
+    retries = 0;
+    dang_gui = true;
+    needRetry = false;
+    waitingSendResult = false;
+    // Gọi hàm xử lý với đúng kiểu
+    xu_ly_data(&lastRecvInfo, lastPacketData, lastPacketLen);
+    // Reset cờ
+    hasNewPacket = false;
+  }
+
   xu_ly_dang_gui();
 
   Hub66s::WatchDog::feed(); // Reset WDT timer

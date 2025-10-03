@@ -14,6 +14,11 @@ extern volatile bool hasNewPacket;
 extern int lastPacketLen;
 extern uint8_t lastPacketData[sizeof(PayloadStruct)];
 
+extern bool dang_gui; // cờ đang gửi
+extern bool waitingSendResult; // Cờ chờ kết quả gửi
+extern bool needRetry; //Cần gửi lại
+extern unsigned long lastTime; // Thời điểm gửi cuối cùng
+
 // Cấu trúc cho tin nhắn ESP-NOW
 extern PayloadStruct message;
 
@@ -73,6 +78,13 @@ void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_
     }
     output.toCharArray(message.payload, sizeof(message.payload)); // Chuyển vào payload
 
+    //---------------
+    dang_gui = true;
+    waitingSendResult = true;
+    needRetry = false;
+    lastTime = millis();
+    //---------------
+
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, targetMac, 6);
     peerInfo.channel = 1;
@@ -88,9 +100,20 @@ void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_
         delay(100); // Đợi một chút để đảm bảo peer đã được thêm
     }
 
-    esp_now_send(targetMac, (uint8_t *)&message, sizeof(message)); // Gửi qua ESP-NOW
+    // esp_now_send(targetMac, (uint8_t *)&message, sizeof(message)); // Gửi qua ESP-NOW
+    esp_err_t sendResult = esp_now_send(targetMac, (uint8_t *)&message, sizeof(message)); // Gửi qua ESP-NOW
     Serial.println("\n📤 Đã gửi phản hồi:");
     Serial.println(output);
+
+    //---------------
+    if (sendResult != ESP_OK)
+    {
+        Serial.printf("❌ Lỗi gửi ESP-NOW: %d\n", sendResult);
+        waitingSendResult = false;
+        needRetry = true;
+    }
+    //---------------
+
 
     // Xóa peer sau khi gửi
     if (esp_now_is_peer_exist(targetMac))
@@ -133,9 +156,9 @@ void saveDeviceConfig()
 {
     preferences.begin("license", false);
     // Lưu cấu hình thiết bị với kiểu dữ liệu nhất quán
-    preferences.putUInt("config_lid", config_lid);
-    preferences.putUInt("config_id", config_id);
-    preferences.putUInt("nod", ::nod);
+    preferences.putInt("config_lid", config_lid);
+    preferences.putInt("config_id", config_id);
+    preferences.putInt("nod", ::nod);
     preferences.end();
 }
 
