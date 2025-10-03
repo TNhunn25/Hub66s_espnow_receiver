@@ -20,8 +20,8 @@ LicenseInfo globalLicense;
 PayloadStruct message;
 
 // Biến lưu cấu hình
-int config_lid = 112;
-int config_id = 2012; // ID của HUB66S
+int config_lid = 111;
+int config_id = 2020; // ID của HUB66S
 int id_des = 1001;    // ID của LIC66S
 String device_id = "HUB66S_001";
 
@@ -33,10 +33,9 @@ uint8_t expired = 0;       // Biến lưu trạng thái hết hạn
 
 //-----------
 constexpr uint8_t MAX_RETRIES = 3; // Số lần thử gửi lại tối đa
-bool waitingSendResult = false; // Cờ chờ kết quả gửi
-bool needRetry = false; //Cần gửi lại
+bool waitingSendResult = false;    // Cờ chờ kết quả gửi
+bool needRetry = false;            // Cần gửi lại
 //-----------
-
 
 uint32_t now;
 time_t start_time = 0;          // thời điểm bắt đầu tính thời gian
@@ -47,7 +46,7 @@ uint32_t lastRuntimeUpdate = 0; // Thời điểm cập nhật runtime gần nh�
 
 // bool networkConnected = false;
 uint32_t runtime = 0;
-uint32_t nod = 0; // số lượng thiết bị giả định 10
+uint32_t nod = 0;      // số lượng thiết bị giả định 10
 bool dang_gui = false; // cờ đang gửi
 uint32_t lastTime = 0; // thời điểm gửi lần cuối
 uint8_t retries = 0;   // số lần đã thử gửi
@@ -92,21 +91,21 @@ void xu_ly_dang_gui()
 void xu_ly_dang_gui()
 {
   // Chỉ xử lý khi đang trong trạng thái gửi
-  if(!dang_gui)
+  if (!dang_gui)
     return;
 
-   //Nếu đang chờ kết quả gửi thì chưa làm gì cả
-   if(waitingSendResult)
-     return;
+  // Nếu đang chờ kết quả gửi thì chưa làm gì cả
+  if (waitingSendResult)
+    return;
 
-  //Nếu không cần gửi lại thì kết thúc trạng thái gửi
-  if(!needRetry)
+  // Nếu không cần gửi lại thì kết thúc trạng thái gửi
+  if (!needRetry)
   {
     dang_gui = false;
     return;
   }
 
-  if(retries >= MAX_RETRIES)
+  if (retries >= MAX_RETRIES)
   {
     // Đã thử 3 lần mà vẫn fail → dừng gửi
     dang_gui = false;
@@ -117,26 +116,25 @@ void xu_ly_dang_gui()
     return;
   }
 
-  uint32_t now = millis(); //hoặc dùng giá trị unsigned long
-  //Chưa đủ 1s kể từ lần gửi trước thì bỏ qua
-   if(now - lastTime < 1000)
-   return;
+  uint32_t now = millis(); // hoặc dùng giá trị unsigned long
+  // Chưa đủ 1s kể từ lần gửi trước thì bỏ qua
+  if (now - lastTime < 1000)
+    return;
 
   // Đã đủ 1s, cập nhật thời điểm và thử gửi
   lastTime = now;
   retries++;
-  needRetry = false; //chỉ gửi lại một lần
-  waitingSendResult = true; //chờ kết quả gửi
+  needRetry = false;        // chỉ gửi lại một lần
+  waitingSendResult = true; // chờ kết quả gửi
   Serial.printf("📤 Thử gửi lại lần %d...\n", retries);
   // gọi hàm truyền data
   xu_ly_data(&lastRecvInfo, lastPacketData, lastPacketLen);
-  if(!waitingSendResult && !needRetry)
+  if (!waitingSendResult && !needRetry)
   {
     // Không có gói nào được gửi trong lần này
     dang_gui = false;
   }
 }
-
 
 void setup()
 {
@@ -160,8 +158,27 @@ void setup()
   globalLicense.id = config_id;
   globalLicense.nod = nod;
 
+  // // Khởi tạo trạng thái expired dựa trên globalLicense
+  // if (globalLicense.remain > 0 && !globalLicense.expired_flag)
+  // {
+  //   expired = 0; // Giấy phép còn hạn
+  // }
+  // else
+  // {
+  //   expired = 1; // Giấy phép hết hạn hoặc không hợp lệ
+  // }
+
   // Khởi tạo trạng thái expired dựa trên globalLicense
-  if (globalLicense.remain > 0 && !globalLicense.expired_flag)
+  if (globalLicense.time_unlimited)
+  {
+    expired = 0;                        // Luôn cho trạng thái còn hạn khi không giới hạn
+    globalLicense.expired_flag = false; // Xóa cờ hết hạn khỏi lần khởi động trước
+    if (globalLicense.remain != globalLicense.duration)
+    {
+      globalLicense.remain = globalLicense.duration; // Đồng bộ lại thời gian còn lại về giá trị danh nghĩa
+    }
+  }
+  else if (globalLicense.remain > 0 && !globalLicense.expired_flag)
   {
     expired = 0; // Giấy phép còn hạn
   }
@@ -169,6 +186,7 @@ void setup()
   {
     expired = 1; // Giấy phép hết hạn hoặc không hợp lệ
   }
+
   saveLicenseData();
   led.setState(CONNECTION_ERROR);
 }
@@ -183,6 +201,8 @@ void loop()
 
   // Kiểm tra license và gửi thông tin định kỳ
   uint32_t nowMillis = millis();
+
+  /*
   if (nowMillis - lastRuntimeUpdate >= 60000)
   {
     lastRuntimeUpdate = nowMillis;
@@ -233,6 +253,87 @@ void loop()
       led.setState(NORMAL_STATUS); // LED sáng liên tục
     }
   }
+  */
+
+  const bool hasValidLicense = (globalLicense.lid != 0) &&
+                               (globalLicense.duration > 0 || globalLicense.time_unlimited);
+
+  if (hasValidLicense)
+  {
+    runtime++; // tăng thời gian chạy từng phút
+    preferences.begin("license", false);
+    preferences.putULong("runtime", runtime);
+    preferences.end();
+
+    if (globalLicense.time_unlimited)
+    {
+      bool needSave = false;
+      if (globalLicense.remain != globalLicense.duration)
+      {
+        globalLicense.remain = globalLicense.duration; // Duy trì giá trị remain cố định với giấy phép không giới hạn
+        needSave = true;
+      }
+      if (globalLicense.expired_flag || expired != 0)
+      {
+        globalLicense.expired_flag = false; // Xóa cờ hết hạn để tránh ảnh hưởng các chức năng khác
+        expired = 0;                        // License luôn còn hạn trong chế độ không giới hạn
+        needSave = true;
+      }
+      if (needSave)
+      {
+        saveLicenseData(false); // Ghi lại để các lần khởi động sau nhận diện đúng trạng thái
+      }
+    }
+    else
+    {
+      globalLicense.remain = globalLicense.duration > runtime ? globalLicense.duration - runtime : 0; // Ngăn remain âm
+
+      // Kiểm tra license hết hạn
+      if (globalLicense.remain <= 0 && !globalLicense.expired_flag)
+      {
+        globalLicense.expired_flag = true;
+        globalLicense.remain = 0;
+        expired = 1;            // Giấy phép hết hạn
+        saveLicenseData(false); // Lưu lại trạng thái hết hạn để đồng bộ với Sender
+      }
+      else if (globalLicense.remain > 0 && globalLicense.expired_flag)
+      {
+        globalLicense.expired_flag = false;
+        expired = 0;            // Giấy phép còn hạn
+        saveLicenseData(false); // Ghi nhận lại trạng thái đã khôi phục
+      }
+      else
+      {
+        saveLicenseData(false); // Vẫn lưu thời gian runtime mới cập nhật
+      }
+    }
+  }
+  else
+  {
+    // Giấy phép không hợp lệ
+    expired = 1; // Hết hạn
+    globalLicense.expired_flag = true;
+    globalLicense.remain = 0;
+    if (globalLicense.time_unlimited)
+    {
+      globalLicense.time_unlimited = false; // Nếu license không hợp lệ thì bỏ trạng thái không giới hạn
+    }
+    saveLicenseData(false); // Ghi lại để tránh dùng dữ liệu cũ
+  }
+  // Cập nhật LED trạng thái
+  if (globalLicense.time_unlimited)
+  {
+    led.setState(NORMAL_STATUS); // LED sáng liên tục khi không giới hạn thời gian
+  }
+  else if (globalLicense.expired_flag || globalLicense.remain <= 0)
+  {
+    led.setState(LICENSE_EXPIRED); // LED tắt
+  }
+  else
+  {
+    led.setState(NORMAL_STATUS); // LED sáng liên tục
+  }
+
   /*
   if (hasNewPacket)
   {
@@ -247,7 +348,7 @@ void loop()
 
   if (hasNewPacket)
   {
-    //Reset trạng thái trước khi xử lý gói mới
+    // Reset trạng thái trước khi xử lý gói mới
     retries = 0;
     dang_gui = true;
     needRetry = false;

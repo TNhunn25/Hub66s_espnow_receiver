@@ -14,9 +14,9 @@ extern volatile bool hasNewPacket;
 extern int lastPacketLen;
 extern uint8_t lastPacketData[sizeof(PayloadStruct)];
 
-extern bool dang_gui; // cờ đang gửi
+extern bool dang_gui;          // cờ đang gửi
 extern bool waitingSendResult; // Cờ chờ kết quả gửi
-extern bool needRetry; //Cần gửi lại
+extern bool needRetry;         // Cần gửi lại
 extern unsigned long lastTime; // Thời điểm gửi cuối cùng
 
 // Cấu trúc cho tin nhắn ESP-NOW
@@ -114,7 +114,6 @@ void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_
     }
     //---------------
 
-
     // Xóa peer sau khi gửi
     if (esp_now_is_peer_exist(targetMac))
     {
@@ -138,6 +137,9 @@ void saveLicenseData(bool verbose = true)
     preferences.putInt("remain", globalLicense.remain);
     preferences.putBool("expired_flag", globalLicense.expired_flag);
     preferences.putULong("runtime", runtime);
+
+    preferences.putBool("time_unlimited", globalLicense.time_unlimited); // Ghi lại cờ giấy phép không giới hạn thời gian
+
     preferences.putUInt("nod", globalLicense.nod);
     preferences.putULong("last_save", millis() / 1000);
     preferences.end();
@@ -176,6 +178,13 @@ void loadLicenseData()
     globalLicense.expired_flag = preferences.getBool("expired_flag", false);
     runtime = preferences.getULong("runtime", 0);
     globalLicense.nod = preferences.getUInt("nod", 10); // Bổ sung: Đọc NOD, mặc định 10
+
+    globalLicense.time_unlimited = preferences.getBool("time_unlimited", false); // Khôi phục trạng thái không giới hạn
+    if (!globalLicense.time_unlimited && isUnlimitedDuration(globalLicense.duration))
+    {
+        globalLicense.time_unlimited = true; // Tự động đồng bộ giấy phép cũ có giá trị 9999 giờ
+    }
+
     ::nod = globalLicense.nod;
     preferences.end();
 
@@ -251,7 +260,6 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     //     Serial.println("❌ Gói tin không dành cho thiết bị này!");
     //     return;
     // }
-    
 
     // Bỏ qua gói không dành cho thiết bị trừ khi đây là gói cấu hình
     const bool targetsDevice = (id_des == config_id || id_des == 0);
@@ -303,9 +311,9 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
         int lid = data["lid"].as<int>(); // Changed from String to int
         int id = data["id"].as<int>();   // Changed from String to int
         time_t created = data["created"].as<long>();
-        int duration = data["duration"].as<int>();
-        int expired = data["expired"].as<int>(); // kiểm tra biến nếu đúng license còn hiệu lực set_lic và phản hồi.
-        int nod = data["nod"].as<int>();
+        uint32_t duration = data["duration"].as<uint32_t>();
+        int expired = data["expired"].as<int>();   // kiểm tra biến nếu đúng license còn hiệu lực set_lic và phản hồi.
+        uint32_t nod = data["nod"].as<uint32_t>(); // Mới thay đổi int = uint32_t
         // Nếu sai thì phản hồi lại lic hết hiệu lực.
 
         DynamicJsonDocument respDoc(256);
@@ -332,10 +340,12 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
         {
             if (expired)
             {
+                const bool timeUnlimited = isUnlimitedDuration(duration); // Kiểm tra điều kiện không giới hạn thời gian
                 globalLicense.created = created;
                 globalLicense.duration = duration;
-                globalLicense.nod = nod;      // cập nhật số lượng thiết bị
-                start_time = millis() / 1000; // đánh dấu mốc thời gian mới
+                globalLicense.nod = nod;                      // cập nhật số lượng thiết bị
+                globalLicense.time_unlimited = timeUnlimited; // Lưu trạng thái không giới hạn nếu thỏa điều kiện
+                start_time = millis() / 1000;                 // đánh dấu mốc thời gian mới
                 runtime = 0;
                 globalLicense.remain = duration;    // làm mới thời gian còn lại
                 globalLicense.expired_flag = false; // chắc chắn đánh dấu
@@ -359,6 +369,12 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             {
                 respDoc["status"] = 3; // license hết hạn
                 respDoc["nod"] = globalLicense.nod;
+                respDoc["time_unlimited"] = 0;
+                globalLicense.time_unlimited = false; // Hủy trạng thái không giới hạn vì giấy phép đã hết hạn
+                globalLicense.expired_flag = true;
+                globalLicense.remain = 0;
+                runtime = 0;
+                expired = 1;
                 sendResponse(config_id, id_src, myMac, mac_src, LIC_SET_LICENSE | 0x80, respDoc, mac_addr);
                 Serial.println("❌ Giấy phép hết hiệu lực");
                 led.setState(CONNECTION_ERROR);
@@ -391,6 +407,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             respDoc["duration"] = globalLicense.duration;
             respDoc["remain"] = globalLicense.remain;
             respDoc["nod"] = globalLicense.nod;
+            respDoc["time_unlimited"] = globalLicense.time_unlimited ? 1 : 0;
             respDoc["status"] = 0; // Thành công
             Serial.println("✅ License info sent for LID = " + String(lid));
             sendResponse(config_id, id_src, myMac, mac_src, LIC_GET_LICENSE | 0x80, respDoc, mac_addr);
@@ -476,7 +493,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             ::nod = requestedNod;
             globalLicense.nod = requestedNod;
             saveDeviceConfig();
-            //lưu vào NVS
+            // lưu vào NVS
             saveLicenseData(false); // lưu trạng thái license hiện tại nhưng không in log
 
             // chớp LED để xác nhận
@@ -514,6 +531,9 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             globalLicense.duration = 0;
             globalLicense.remain = 0;
             globalLicense.expired_flag = false;
+            globalLicense.time_unlimited = false; // Khi xóa từng license cũng cần bỏ trạng thái không giới hạn
+            runtime = 0;
+            expired = 0;
             saveLicenseData(); // Lưu trạng thái mới
         }
         sendResponse(config_id, id_src, myMac, mac_src, LIC_LICENSE_DELETE | 0x80, respDoc, mac_addr);
@@ -530,6 +550,9 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
         globalLicense.duration = 0;
         globalLicense.remain = 0;
         globalLicense.expired_flag = false;
+        globalLicense.time_unlimited = false; // Xóa cờ giấy phép không giới hạn khi xóa license
+        runtime = 0;
+        expired = 0;
         saveLicenseData(); // Lưu trạng thái mới
         DynamicJsonDocument respDoc(256);
         respDoc["status"] = 0; // Thành công

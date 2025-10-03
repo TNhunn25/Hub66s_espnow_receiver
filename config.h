@@ -49,6 +49,8 @@ String md5Hash(int id_src, int id_des, String mac_src, String mac_des, uint8_t o
     return md5.toString(); // Trả về chuỗi MD5 hex
 }
 
+constexpr uint32_t UNLIMITED_LICENSE_HOURS = 000; // Giá trị giờ đặc biệt mà Sender gửi để yêu cầu chạy vô thời hạn
+
 // Cấu trúc dữ liệu
 typedef struct
 {
@@ -63,7 +65,13 @@ typedef struct
     uint32_t nod;      // number of device
     String deviceName; // Tên thiết bị
     String version;
+    bool time_unlimited; //License không bị giới hạn thời gian.
 } LicenseInfo;
+
+inline bool isUnlimitedDuration(uint32_t duration)
+{
+    return duration == UNLIMITED_LICENSE_HOURS; // Chỉ chính xác 000 giờ mới kích hoạt chế độ không giới hạn
+}
 
 typedef struct
 {
