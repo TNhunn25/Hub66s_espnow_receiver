@@ -11,15 +11,6 @@
 // Định nghĩa chân LED
 #define LED_PIN 46
 
-//Cấu hình nhóm ESP- NOW
-constexpr uint8_t HUB66S_GROUP_COUNT = 3; //Tổng số nhóm Hub sẽ luân phiên
-constexpr uint8_t HUB66S_GROUP_SIZE = 1; //Số lượng Hub tối đa trong mỗi nhóm
-constexpr uint8_t HUB66S_GROUP_SLOT_MS = 5000UL; //5 giây cho mỗi slot hoạt động
-
-//Khóa PMK dùng cho mã hóa ESP_NOW 16 byte
-static const uint8_t HUB66S_ESPNOW_PMK[16] = {'H', 'u', 'b', '6', '6', 's', 'P', 'm', 'k', 'S', 'e', 'c', 'r', 'e', 't', '!'}; // Khóa PMK dùng chung cho toàn mạng
-static const uint8_t HUB66S_ESPNOW_LMK[16] = {'H', 'u', 'b', '6', '6', 's', 'L', 'm', 'k', 'S', 'e', 'c', 'r', 'e', 't', '!'}; // Khóa LMK dùng khi đăng ký peer
-
 // Định nghĩa các opcode
 #define LIC_TIME_GET 0x01
 #define LIC_SET_LICENSE 0x02
@@ -37,8 +28,6 @@ static const uint8_t HUB66S_ESPNOW_LMK[16] = {'H', 'u', 'b', '6', '6', 's', 'L',
 // Địa chỉ MAC broadcast và khóa bí mật
 static uint8_t senderMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};   // MAC của LIC66S
 static uint8_t receiverMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // MAC broadcast
-
-//Khóa bí mật cho hàm băm MD5
 #define private_key "khoabi_mat_123"
 
 // Hàm mã hóa Auth MD5

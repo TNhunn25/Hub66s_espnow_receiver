@@ -4,7 +4,6 @@
 #include "config.h"
 #include "led_status.h"
 #include "espnow_handler.h"
-#include "espnow_scheduler.h"
 #include "protocol_handler.h"
 #include "serial.h"
 #include "watch_dog.h"
@@ -61,9 +60,6 @@ uint8_t lastPacketMac[6];
 volatile bool hasNewPacket = false; // Lưu độ dài payload
 int lastPacketLen;
 // Lưu payload (có thể điều chỉnh kích thước tuỳ theo nhu cầu, ở đây bằng tối đa của PayloadStruct)
-
-//Bộ lập lịch ESP-NOW giúp Hub xoay vòng 5 nhóm thiết bị mỗi giây
-Hub66s::EspNowScheduler espNowScheduler;
 
 /*
 
@@ -154,9 +150,6 @@ void setup()
   delay(100);
   WiFi.setTxPower(WIFI_POWER_2dBm);
   initEspNow();                     // Initialize ESP-NOW
-  espNowScheduler.setSlotDuration(HUB66S_GROUP_SLOT_MS); //Đồng bộ thời lượng slot với cấu hình
-  espNowScheduler.configureDemoPeers(); //Cấu hình danh sách peer giả lập để test
-  espNowScheduler.begin();          // Bắt đầu cơ chế luân phiên nhóm
   configTime(0, 0, "pool.ntp.org"); // Configure NTP for time synchronization
 
   esp_now_register_recv_cb(onReceive); // Register receive callback
@@ -186,7 +179,6 @@ void loop()
   serialPC();
   led.update();
   ledDisplay.update(); // Cập nhật hiển thị màn hình LED
-  espNowScheduler.update(); // Chuyển nhóm khi hết slot và cập nhật bảng peer 
   delay(10);           // Giảm tải CPU
 
   // Kiểm tra license và gửi thông tin định kỳ
