@@ -2,6 +2,7 @@
 #define LED_STATUS_H
 
 #include <Arduino.h>
+#include <config.h> // để truy cập globalLicense.expired_flag
 
 /* ───── Trạng thái LED ────────────────────────────────────────── */
 enum LedState : uint8_t

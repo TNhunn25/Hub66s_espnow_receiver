@@ -6,6 +6,7 @@
 #include <time.h>
 #include <MD5Builder.h>
 #include "led_status.h"
+#include <Preferences.h> //Thư viện lưu trữ dữ liệu không mất khi tắt nguồn
 
 // Định nghĩa chân LED
 #define LED_PIN 46
@@ -18,6 +19,8 @@
 #define LIC_LICENSE_DELETE_ALL 0x05
 #define LIC_INFO 0x06
 #define CONFIG_DEVICE 0x07
+#define LIC_CONFIG_DEVICE CONFIG_DEVICE
+#define CONFIG_DEVICE_ACK (CONFIG_DEVICE | 0x80)
 #define LIC_INFO_RESPONSE 0x80
 
 // Kích thước buffer cho JSON
@@ -29,7 +32,7 @@ static uint8_t receiverMac[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}; // MAC broa
 #define private_key "khoabi_mat_123"
 
 // Hàm mã hóa Auth MD5
-String md5Hash(int id_src, int id_des, const String &mac_src, const String &mac_des, uint8_t opcode, const String &data,
+String md5Hash(int id_src, int id_des, String mac_src, String mac_des, uint8_t opcode, const String &data,
                unsigned long timestamp)
 {
 
@@ -65,7 +68,7 @@ typedef struct
 
 typedef struct
 {
-    char payload[250];
+    char payload[512]; // Kích thước payload có thể điều chỉnh
 } PayloadStruct;
 
 // Lấy địa chỉ MAC của thiết bị
@@ -81,6 +84,7 @@ extern PayloadStruct message;
 extern int config_lid;
 extern int config_id; // id_src
 extern int id_des;    // id_des
+extern int config_group_id;
 extern bool config_processed;
 extern char jsonBuffer[BUFFER_SIZE];
 extern int bufferIndex;
