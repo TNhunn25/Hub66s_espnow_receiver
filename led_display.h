@@ -8,7 +8,6 @@
 
 namespace Hub66s
 {
-
     class LedDisplay
     {
     public:

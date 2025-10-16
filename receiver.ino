@@ -20,9 +20,10 @@ LicenseInfo globalLicense;
 PayloadStruct message;
 
 // Biến lưu cấu hình
-int config_lid = 112;
-int config_id = 2012; // ID của HUB66S
+int config_lid = 114;
+int config_id = 2010; // ID của HUB66S
 int id_des = 1001;    // ID của LIC66S
+int config_group_id = -1; // Nhóm mặc định cho thiết bị (chưa cấu hình)
 String device_id = "HUB66S_001";
 
 bool config_processed = false;
@@ -37,7 +38,6 @@ bool waitingSendResult = false; // Cờ chờ kết quả gửi
 bool needRetry = false; //Cần gửi lại
 //-----------
 
-
 uint32_t now;
 time_t start_time = 0;          // thời điểm bắt đầu tính thời gian
 const uint32_t duration = 60;   // Giá trị cố định sau khi gán lần đầu cho license
@@ -47,7 +47,8 @@ uint32_t lastRuntimeUpdate = 0; // Thời điểm cập nhật runtime gần nh�
 
 // bool networkConnected = false;
 uint32_t runtime = 0;
-uint32_t nod = 0; // số lượng thiết bị giả định 10
+uint32_t group_id = 0; // số lượng thiết bị giả định
+uint32_t nod = 0;
 bool dang_gui = false; // cờ đang gửi
 uint32_t lastTime = 0; // thời điểm gửi lần cuối
 uint8_t retries = 0;   // số lần đã thử gửi
@@ -62,7 +63,6 @@ int lastPacketLen;
 // Lưu payload (có thể điều chỉnh kích thước tuỳ theo nhu cầu, ở đây bằng tối đa của PayloadStruct)
 
 /*
-
 void xu_ly_dang_gui()
 {
   // Chỉ xử lý khi đang trong trạng thái gửi
@@ -137,7 +137,6 @@ void xu_ly_dang_gui()
   }
 }
 
-
 void setup()
 {
   Serial.begin(115200);
@@ -151,14 +150,18 @@ void setup()
   WiFi.setTxPower(WIFI_POWER_2dBm);
   initEspNow();                     // Initialize ESP-NOW
   configTime(0, 0, "pool.ntp.org"); // Configure NTP for time synchronization
-
   esp_now_register_recv_cb(onReceive); // Register receive callback
 
   loadLicenseData();
   // Biến trả về giá trị của node
   globalLicense.lid = config_lid;
   globalLicense.id = config_id;
-  globalLicense.nod = nod;
+  globalLicense.group_id = group_id;
+
+  if (config_group_id >= 0)
+  {
+    Serial.printf("📦 Group assignment hiện tại: %d\n", config_group_id);
+  }
 
   // Khởi tạo trạng thái expired dựa trên globalLicense
   if (globalLicense.remain > 0 && !globalLicense.expired_flag)

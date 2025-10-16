@@ -20,6 +20,7 @@
 #define LIC_INFO 0x06
 #define CONFIG_DEVICE 0x07
 #define LIC_CONFIG_DEVICE CONFIG_DEVICE
+#define CONFIG_DEVICE_ACK (CONFIG_DEVICE | 0x80)
 #define LIC_INFO_RESPONSE 0x80
 
 // Kích thước buffer cho JSON
@@ -60,7 +61,7 @@ typedef struct
     uint32_t duration;
     uint32_t remain;
     bool expired_flag; // Đã hết hạn chưa
-    uint32_t nod;      // number of device
+    uint32_t group_id;      // group indentifier
     String deviceName; // Tên thiết bị
     String version;
 } LicenseInfo;
@@ -83,6 +84,7 @@ extern PayloadStruct message;
 extern int config_lid;
 extern int config_id; // id_src
 extern int id_des;    // id_des
+extern int config_group_id;
 extern bool config_processed;
 extern char jsonBuffer[BUFFER_SIZE];
 extern int bufferIndex;
@@ -93,6 +95,6 @@ extern uint8_t expired;
 extern uint32_t now;
 extern uint32_t lastSendTime;
 extern String device_id;
-extern uint32_t nod; // number of device
+extern uint32_t group_id; // group indentifier
 
 #endif // CONFIG_H

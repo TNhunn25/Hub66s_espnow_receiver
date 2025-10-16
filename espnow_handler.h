@@ -15,7 +15,6 @@ void onReceive(const esp_now_recv_info *recv_info, const uint8_t *data, int len)
 
 inline void initEspNow()
 {
-
   // Thiết lập chế đọ wifi station
   //  WiFi.mode(WIFI_STA);
   //  delay(100); // Đợi WiFi ổn định
@@ -40,7 +39,7 @@ inline void initEspNow()
     if (status == ESP_NOW_SEND_SUCCESS) {
       dang_gui = false;
     }
-  }); 
+  });
   */
 
   // Callback xử lý trạng thái gửi gói tin
@@ -59,8 +58,7 @@ inline void initEspNow()
     {
       needRetry = true;
       lastTime = millis();
-    }
-  });
+    } });
   //-----------------------
 
   // Callback xử lý gói tin nhận được

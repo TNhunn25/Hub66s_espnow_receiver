@@ -26,7 +26,7 @@ extern PayloadStruct message;
 extern Preferences preferences;
 
 extern unsigned long runtime;
-extern uint32_t nod; // Số lượng thiết bị, mặc định là 10
+extern uint32_t group_id; // group indentifier for node queueing
 
 // Chuyển đổi MAC thành String
 String macToString(const uint8_t *mac)
@@ -51,8 +51,8 @@ String createMessage(int id_src, int id_des, String mac_src, String mac_des, uin
     DynamicJsonDocument jsonDoc(512);
     jsonDoc["id_src"] = id_src;   // ID nguồn
     jsonDoc["id_des"] = id_des;   // ID đích
-    jsonDoc["mac_src"] = mac_src; // MAC nguồn
-    jsonDoc["mac_des"] = mac_des; // MAC đích
+    // jsonDoc["mac_src"] = mac_src; // MAC nguồn
+    // jsonDoc["mac_des"] = mac_des; // MAC đích
     jsonDoc["opcode"] = opcode;   // Opcode
     jsonDoc["data"] = data;       // Dữ liệu
     jsonDoc["time"] = timestamp;  // Thời gian
@@ -114,7 +114,6 @@ void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_
     }
     //---------------
 
-
     // Xóa peer sau khi gửi
     if (esp_now_is_peer_exist(targetMac))
     {
@@ -138,7 +137,7 @@ void saveLicenseData(bool verbose = true)
     preferences.putInt("remain", globalLicense.remain);
     preferences.putBool("expired_flag", globalLicense.expired_flag);
     preferences.putULong("runtime", runtime);
-    preferences.putUInt("nod", globalLicense.nod);
+    preferences.putUInt("group_id", globalLicense.group_id);
     preferences.putULong("last_save", millis() / 1000);
     preferences.end();
     if (verbose)
@@ -158,7 +157,7 @@ void saveDeviceConfig()
     // Lưu cấu hình thiết bị với kiểu dữ liệu nhất quán
     preferences.putInt("config_lid", config_lid);
     preferences.putInt("config_id", config_id);
-    preferences.putInt("nod", ::nod);
+    preferences.putInt("group_id", ::group_id);
     preferences.end();
 }
 
@@ -175,8 +174,8 @@ void loadLicenseData()
     globalLicense.remain = preferences.getInt("remain", 0);
     globalLicense.expired_flag = preferences.getBool("expired_flag", false);
     runtime = preferences.getULong("runtime", 0);
-    globalLicense.nod = preferences.getUInt("nod", 10); // Bổ sung: Đọc NOD, mặc định 10
-    ::nod = globalLicense.nod;
+    globalLicense.group_id = preferences.getUInt("group_id", 0); // Bổ sung: Đọc NOD, mặc định 10
+    ::group_id= globalLicense.group_id;
     preferences.end();
 
     Serial.println("✅ Đã đọc và cập nhật dữ liệu license từ NVS:");
@@ -285,11 +284,11 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     }
     Serial.println();
     // test
-    Serial.println("Current config_id: " + String(config_id));
-    Serial.println("Current globalLicense.lid: " + String(globalLicense.lid));
+    Serial.println("Device ID: " + String(config_id));
+    Serial.println("Local ID: " + String(globalLicense.lid));
     Serial.println("Full received packet:");
 
-    Serial.print("Opcode: 0x");
+    Serial.print("Opcode: 0x0");
     Serial.println(opcode, HEX);
     serializeJsonPretty(doc, Serial);
     Serial.println();
@@ -305,7 +304,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
         time_t created = data["created"].as<long>();
         int duration = data["duration"].as<int>();
         int expired = data["expired"].as<int>(); // kiểm tra biến nếu đúng license còn hiệu lực set_lic và phản hồi.
-        int nod = data["nod"].as<int>();
+        int groupId = data["group_id"].as<int>();
         // Nếu sai thì phản hồi lại lic hết hiệu lực.
 
         DynamicJsonDocument respDoc(256);
@@ -334,7 +333,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             {
                 globalLicense.created = created;
                 globalLicense.duration = duration;
-                globalLicense.nod = nod;      // cập nhật số lượng thiết bị
+                globalLicense.group_id = groupId;      // cập nhật group id
                 start_time = millis() / 1000; // đánh dấu mốc thời gian mới
                 runtime = 0;
                 globalLicense.remain = duration;    // làm mới thời gian còn lại
@@ -343,7 +342,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
 
                 // Phản hồi thành công
                 respDoc["lid"] = lid;
-                respDoc["nod"] = globalLicense.nod; // cập nhật số lượng thiết bị
+                respDoc["group_id"] = globalLicense.group_id; // trả về group ID đã cấu hình
                 respDoc["status"] = 0;              // Thành công
                 sendResponse(config_id, id_src, myMac, mac_src, LIC_SET_LICENSE | 0x80, respDoc, mac_addr);
                 Serial.println("✅ Cập nhật giấy phép thành công: LID = " + String(lid) + ", ID = " + String(id));
@@ -358,7 +357,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             else
             {
                 respDoc["status"] = 3; // license hết hạn
-                respDoc["nod"] = globalLicense.nod;
+                respDoc["group_id"] = globalLicense.group_id;
                 sendResponse(config_id, id_src, myMac, mac_src, LIC_SET_LICENSE | 0x80, respDoc, mac_addr);
                 Serial.println("❌ Giấy phép hết hiệu lực");
                 led.setState(CONNECTION_ERROR);
@@ -390,7 +389,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             respDoc["expired"] = globalLicense.expired_flag ? 1 : 0;
             respDoc["duration"] = globalLicense.duration;
             respDoc["remain"] = globalLicense.remain;
-            respDoc["nod"] = globalLicense.nod;
+            respDoc["group_id"] = globalLicense.group_id;
             respDoc["status"] = 0; // Thành công
             Serial.println("✅ License info sent for LID = " + String(lid));
             sendResponse(config_id, id_src, myMac, mac_src, LIC_GET_LICENSE | 0x80, respDoc, mac_addr);
@@ -446,13 +445,19 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             id = data["id"].as<int>();
         }
 
-        uint32_t requestedNod = ::nod;
-        if (data.containsKey("nod"))
+        uint32_t requestedNod = ::group_id;
+        if (data.containsKey("group_id"))
         {
-            requestedNod = data["nod"].as<uint32_t>();
+            requestedNod = data["group_id"].as<uint32_t>();
         }
 
-        DynamicJsonDocument respDoc(256);
+        DynamicJsonDocument respDoc(384);
+        JsonObject responseHint = respDoc.createNestedObject("response_hint");
+        // Thông báo cho node biết Hub mong đợi group_id trong phản hồi kế tiếp
+        responseHint["expect_group_id"] = true;
+        // Giải thích chính sách dự phòng: nếu thiếu group_id thì dùng lại cấu hình trên Hub
+        responseHint["fallback_policy"] = "reuse_configured_assignment";
+        responseHint["applies_to"] = "existing_and_new"; // áp dụng cho cả thiết bị đang hoạt động và mới gia nhập
         bool isValid = true;
         String error_msg; // thông báo lỗi
 
@@ -468,25 +473,64 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             error_msg = "ID không hợp lệ";
         }
 
+        // Mặc định sử dụng group_id hiện tại của Hub nếu request không gửi group_id mới
+        int requestedGroupId = config_group_id;
+        bool hasGroupId = false;
+        if (data.containsKey("group_id"))
+        {
+            requestedGroupId = data["group_id"].as<int>();
+            hasGroupId = true;
+        }
+
+        if (hasGroupId && (requestedGroupId < 0 || requestedGroupId > 255))
+        {
+            isValid = false;
+            error_msg = "Group ID không hợp lệ";
+        }
+
+        if (!hasGroupId)
+        {
+            // Ghi log để kỹ thuật viên biết Hub sẽ giữ nguyên cấu hình nhóm đang có
+            Serial.println("ℹ️ Không nhận được group_id mới, Hub sẽ giữ nguyên cấu hình hiện có cho cả thiết bị cũ và mới.");
+        }
+
         if (isValid)
         {
             // Cập nhật cấu hình thiết bị
             config_lid = lid;
             config_id = id;
-            ::nod = requestedNod;
-            globalLicense.nod = requestedNod;
+            ::group_id = requestedGroupId;
+            globalLicense.group_id = requestedGroupId;
+
+            if (hasGroupId)
+            {
+                config_group_id = requestedGroupId;
+            }
+
             saveDeviceConfig();
             //lưu vào NVS
             saveLicenseData(false); // lưu trạng thái license hiện tại nhưng không in log
 
             // chớp LED để xác nhận
             led.setState(FLASH_TWICE); // chớp 3 lần
-            Serial.println("✅ Cấu hình thành công: LID = " + String(lid) + ", ID = " + String(id) + ", NOD = " + String(requestedNod));
+            Serial.println("✅ Cấu hình thành công: LID = " + String(lid) + ", ID = " + String(id) + "GROUP ID = " + String(requestedGroupId));
+
+            if (config_group_id >= 0)
+            {
+                Serial.printf("✅ Nhóm được gán: %d\n", config_group_id);
+            }
 
             respDoc["status"] = 0;
             respDoc["lid"] = config_lid;
             respDoc["id"] = config_id;
-            respDoc["nod"] = ::nod;
+            respDoc["group_id"] = ::group_id;
+
+            if (config_group_id >= 0)
+            {
+                // Gửi kèm group_id đã gán để node đồng bộ cấu hình với Hub
+                respDoc["group_id"] = config_group_id;
+                responseHint["group_id"] = config_group_id;
+            }
         }
         else
         {
@@ -494,6 +538,11 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             respDoc["error_msg"] = error_msg;
             Serial.println("❌ Lỗi: " + error_msg + " (LID = " + String(lid) + ", ID = " + String(id) + ", config_id = " + String(config_id) + ")");
             led.setState(CONNECTION_ERROR);
+            if (config_group_id >= 0)
+            {
+                // Khi lỗi vẫn nhắc lại group_id hiện hành để node nắm được cấu hình Hub đang duy trì
+                responseHint["group_id"] = config_group_id;
+            }
         }
 
         sendResponse(config_id, id_src, myMac, mac_src, CONFIG_DEVICE | 0x80, respDoc, mac_addr);
