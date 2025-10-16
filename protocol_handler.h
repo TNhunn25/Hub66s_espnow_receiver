@@ -26,7 +26,7 @@ extern PayloadStruct message;
 extern Preferences preferences;
 
 extern unsigned long runtime;
-extern uint32_t nod; // Số lượng thiết bị
+extern uint32_t nod; // Số lượng thiết bị, mặc định là 10
 
 // Chuyển đổi MAC thành String
 String macToString(const uint8_t *mac)
@@ -113,6 +113,7 @@ void sendResponse(int id_src, int id_des, String mac_src, String mac_des, uint8_
         needRetry = true;
     }
     //---------------
+
 
     // Xóa peer sau khi gửi
     if (esp_now_is_peer_exist(targetMac))
@@ -284,11 +285,11 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     }
     Serial.println();
     // test
-    Serial.println("Device ID: " + String(config_id));
-    Serial.println("Local ID: " + String(globalLicense.lid));
+    Serial.println("Current config_id: " + String(config_id));
+    Serial.println("Current globalLicense.lid: " + String(globalLicense.lid));
     Serial.println("Full received packet:");
 
-    Serial.print("Opcode: 0x0");
+    Serial.print("Opcode: 0x");
     Serial.println(opcode, HEX);
     serializeJsonPretty(doc, Serial);
     Serial.println();
@@ -451,13 +452,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             requestedNod = data["nod"].as<uint32_t>();
         }
 
-        DynamicJsonDocument respDoc(384);
-        JsonObject responseHint = respDoc.createNestedObject("response_hint");
-        // Thông báo cho node biết Hub mong đợi group_id trong phản hồi kế tiếp
-        responseHint["expect_group_id"] = true;
-        // Giải thích chính sách dự phòng: nếu thiếu group_id thì dùng lại cấu hình trên Hub
-        responseHint["fallback_policy"] = "reuse_configured_assignment";
-        responseHint["applies_to"] = "existing_and_new"; // áp dụng cho cả thiết bị đang hoạt động và mới gia nhập
+        DynamicJsonDocument respDoc(256);
         bool isValid = true;
         String error_msg; // thông báo lỗi
 
@@ -473,27 +468,6 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             error_msg = "ID không hợp lệ";
         }
 
-        // Mặc định sử dụng group_id hiện tại của Hub nếu request không gửi group_id mới
-        int requestedGroupId = config_group_id;
-        bool hasGroupId = false;
-        if (data.containsKey("group_id"))
-        {
-            requestedGroupId = data["group_id"].as<int>();
-            hasGroupId = true;
-        }
-
-        if (hasGroupId && (requestedGroupId < 0 || requestedGroupId > 255))
-        {
-            isValid = false;
-            error_msg = "Group ID không hợp lệ";
-        }
-
-        if (!hasGroupId)
-        {
-            // Ghi log để kỹ thuật viên biết Hub sẽ giữ nguyên cấu hình nhóm đang có
-            Serial.println("ℹ️ Không nhận được group_id mới, Hub sẽ giữ nguyên cấu hình hiện có cho cả thiết bị cũ và mới.");
-        }
-
         if (isValid)
         {
             // Cập nhật cấu hình thiết bị
@@ -501,12 +475,6 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             config_id = id;
             ::nod = requestedNod;
             globalLicense.nod = requestedNod;
-
-            if (hasGroupId)
-            {
-                config_group_id = requestedGroupId;
-            }
-
             saveDeviceConfig();
             //lưu vào NVS
             saveLicenseData(false); // lưu trạng thái license hiện tại nhưng không in log
@@ -515,22 +483,10 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             led.setState(FLASH_TWICE); // chớp 3 lần
             Serial.println("✅ Cấu hình thành công: LID = " + String(lid) + ", ID = " + String(id) + ", NOD = " + String(requestedNod));
 
-            if (config_group_id >= 0)
-            {
-                Serial.printf("✅ Nhóm được gán: %d\n", config_group_id);
-            }
-
             respDoc["status"] = 0;
             respDoc["lid"] = config_lid;
             respDoc["id"] = config_id;
             respDoc["nod"] = ::nod;
-
-            if (config_group_id >= 0)
-            {
-                // Gửi kèm group_id đã gán để node đồng bộ cấu hình với Hub
-                respDoc["group_id"] = config_group_id;
-                responseHint["group_id"] = config_group_id;
-            }
         }
         else
         {
@@ -538,11 +494,6 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             respDoc["error_msg"] = error_msg;
             Serial.println("❌ Lỗi: " + error_msg + " (LID = " + String(lid) + ", ID = " + String(id) + ", config_id = " + String(config_id) + ")");
             led.setState(CONNECTION_ERROR);
-            if (config_group_id >= 0)
-            {
-                // Khi lỗi vẫn nhắc lại group_id hiện hành để node nắm được cấu hình Hub đang duy trì
-                responseHint["group_id"] = config_group_id;
-            }
         }
 
         sendResponse(config_id, id_src, myMac, mac_src, CONFIG_DEVICE | 0x80, respDoc, mac_addr);

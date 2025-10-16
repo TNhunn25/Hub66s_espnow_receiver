@@ -23,7 +23,6 @@ PayloadStruct message;
 int config_lid = 112;
 int config_id = 2012; // ID của HUB66S
 int id_des = 1001;    // ID của LIC66S
-int config_group_id = -1; // Nhóm mặc định cho thiết bị (chưa cấu hình)
 String device_id = "HUB66S_001";
 
 bool config_processed = false;
@@ -160,11 +159,6 @@ void setup()
   globalLicense.lid = config_lid;
   globalLicense.id = config_id;
   globalLicense.nod = nod;
-
-  if (config_group_id >= 0)
-  {
-    Serial.printf("📦 Group assignment hiện tại: %d\n", config_group_id);
-  }
 
   // Khởi tạo trạng thái expired dựa trên globalLicense
   if (globalLicense.remain > 0 && !globalLicense.expired_flag)

@@ -20,7 +20,6 @@
 #define LIC_INFO 0x06
 #define CONFIG_DEVICE 0x07
 #define LIC_CONFIG_DEVICE CONFIG_DEVICE
-#define CONFIG_DEVICE_ACK (CONFIG_DEVICE | 0x80)
 #define LIC_INFO_RESPONSE 0x80
 
 // Kích thước buffer cho JSON
@@ -84,7 +83,6 @@ extern PayloadStruct message;
 extern int config_lid;
 extern int config_id; // id_src
 extern int id_des;    // id_des
-extern int config_group_id;
 extern bool config_processed;
 extern char jsonBuffer[BUFFER_SIZE];
 extern int bufferIndex;
