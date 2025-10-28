@@ -14,9 +14,9 @@ extern volatile bool hasNewPacket;
 extern int lastPacketLen;
 extern uint8_t lastPacketData[sizeof(PayloadStruct)];
 
-extern bool dang_gui; // cờ đang gửi
+extern bool dang_gui;          // cờ đang gửi
 extern bool waitingSendResult; // Cờ chờ kết quả gửi
-extern bool needRetry; //Cần gửi lại
+extern bool needRetry;         // Cần gửi lại
 extern unsigned long lastTime; // Thời điểm gửi cuối cùng
 
 // Cấu trúc cho tin nhắn ESP-NOW
@@ -49,14 +49,14 @@ String createMessage(int id_src, int id_des, String mac_src, String mac_des, uin
     String auth = md5Hash(id_src, id_des, mac_src, mac_des, opcode, dataStr, timestamp); // Tạo mã MD5
 
     DynamicJsonDocument jsonDoc(512);
-    jsonDoc["id_src"] = id_src;   // ID nguồn
-    jsonDoc["id_des"] = id_des;   // ID đích
+    jsonDoc["id_src"] = id_src; // ID nguồn
+    jsonDoc["id_des"] = id_des; // ID đích
     // jsonDoc["mac_src"] = mac_src; // MAC nguồn
     // jsonDoc["mac_des"] = mac_des; // MAC đích
-    jsonDoc["opcode"] = opcode;   // Opcode
-    jsonDoc["data"] = data;       // Dữ liệu
-    jsonDoc["time"] = timestamp;  // Thời gian
-    jsonDoc["auth"] = auth;       // Mã xác thực
+    jsonDoc["opcode"] = opcode;  // Opcode
+    jsonDoc["data"] = data;      // Dữ liệu
+    jsonDoc["time"] = timestamp; // Thời gian
+    jsonDoc["auth"] = auth;      // Mã xác thực
 
     String messageStr;
     serializeJson(jsonDoc, messageStr); // Chuyển thành chuỗi JSON
@@ -175,7 +175,7 @@ void loadLicenseData()
     globalLicense.expired_flag = preferences.getBool("expired_flag", false);
     runtime = preferences.getULong("runtime", 0);
     globalLicense.group_id = preferences.getUInt("group_id", 0); // Bổ sung: Đọc NOD, mặc định 10
-    ::group_id= globalLicense.group_id;
+    ::group_id = globalLicense.group_id;
     preferences.end();
 
     Serial.println("✅ Đã đọc và cập nhật dữ liệu license từ NVS:");
@@ -250,7 +250,6 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
     //     Serial.println("❌ Gói tin không dành cho thiết bị này!");
     //     return;
     // }
-    
 
     // Bỏ qua gói không dành cho thiết bị trừ khi đây là gói cấu hình
     const bool targetsDevice = (id_des == config_id || id_des == 0);
@@ -333,8 +332,8 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             {
                 globalLicense.created = created;
                 globalLicense.duration = duration;
-                globalLicense.group_id = groupId;      // cập nhật group id
-                start_time = millis() / 1000; // đánh dấu mốc thời gian mới
+                globalLicense.group_id = groupId; // cập nhật group id
+                start_time = millis() / 1000;     // đánh dấu mốc thời gian mới
                 runtime = 0;
                 globalLicense.remain = duration;    // làm mới thời gian còn lại
                 globalLicense.expired_flag = false; // chắc chắn đánh dấu
@@ -343,7 +342,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
                 // Phản hồi thành công
                 respDoc["lid"] = lid;
                 respDoc["group_id"] = globalLicense.group_id; // trả về group ID đã cấu hình
-                respDoc["status"] = 0;              // Thành công
+                respDoc["status"] = 0;                        // Thành công
                 sendResponse(config_id, id_src, myMac, mac_src, LIC_SET_LICENSE | 0x80, respDoc, mac_addr);
                 Serial.println("✅ Cập nhật giấy phép thành công: LID = " + String(lid) + ", ID = " + String(id));
                 led.setState(FLASH_TWICE); // chớp LED 3 lần để xác nhận
@@ -381,6 +380,33 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
         uint32_t lid = data["lid"].as<uint32_t>(); // Changed from String to int
         DynamicJsonDocument respDoc(512);
 
+        // Đồng bộ group_id nếu node gửi kèm cấu hình mới
+        bool hasGroupIdField = data.containsKey("group_id");
+        if (hasGroupIdField)
+        {
+            uint32_t requestedGroupId = data["group_id"].as<uint32_t>();
+            if (requestedGroupId <= 255)
+            {
+                bool groupChanged = (globalLicense.group_id != requestedGroupId) ||
+                                    (static_cast<uint32_t>(::group_id) != requestedGroupId) ||
+                                    (config_group_id < 0 || static_cast<uint32_t>(config_group_id) != requestedGroupId);
+
+                if (groupChanged)
+                {
+                    ::group_id = requestedGroupId;
+                    globalLicense.group_id = requestedGroupId;
+                    config_group_id = static_cast<int>(requestedGroupId);
+                    saveDeviceConfig();
+                    saveLicenseData(false);
+                    Serial.printf("✅ Đồng bộ group_id từ node: %u\n", requestedGroupId);
+                }
+            }
+            else
+            {
+                Serial.printf("⚠️ Group ID không hợp lệ trong request: %u\n", requestedGroupId);
+            }
+        }
+
         // Kiểm tra LID có hợp lệ không
         if (lid == config_lid || lid == 0)
         {
@@ -389,7 +415,14 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             respDoc["expired"] = globalLicense.expired_flag ? 1 : 0;
             respDoc["duration"] = globalLicense.duration;
             respDoc["remain"] = globalLicense.remain;
-            respDoc["group_id"] = globalLicense.group_id;
+            if (config_group_id >= 0)
+            {
+                respDoc["group_id"] = config_group_id;
+            }
+            else
+            {
+                respDoc["group_id"] = globalLicense.group_id;
+            }
             respDoc["status"] = 0; // Thành công
             Serial.println("✅ License info sent for LID = " + String(lid));
             sendResponse(config_id, id_src, myMac, mac_src, LIC_GET_LICENSE | 0x80, respDoc, mac_addr);
@@ -508,7 +541,7 @@ void xu_ly_data(const esp_now_recv_info *recv_info, const uint8_t *incomingData,
             }
 
             saveDeviceConfig();
-            //lưu vào NVS
+            // lưu vào NVS
             saveLicenseData(false); // lưu trạng thái license hiện tại nhưng không in log
 
             // chớp LED để xác nhận

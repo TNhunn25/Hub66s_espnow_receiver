@@ -21,7 +21,7 @@ PayloadStruct message;
 
 // Biến lưu cấu hình
 int config_lid = 114;
-int config_id = 2003; // ID của HUB66S
+int config_id = 2012; // ID của HUB66S
 int id_des = 1001;    // ID của LIC66S
 int config_group_id = -1; // Nhóm mặc định cho thiết bị (chưa cấu hình)
 String device_id = "HUB66S_001";
